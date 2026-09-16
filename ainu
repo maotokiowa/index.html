@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>アイヌ紋様 視線塗り絵</title>
+    <style>
+        * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; }
+        body { font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; background-color: #292524; color: #f5f5f4; height: 100vh; overflow: hidden; }
+
+        .screen { display: none; flex-direction: column; height: 100vh; padding: 15px; position: relative; }
+        .screen.active { display: flex; }
+
+        /* 設定画面 */
+        .setup-container { background: #44403c; border-radius: 20px; padding: 25px; max-width: 800px; margin: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-height: 90vh; overflow-y: auto; color: #f5f5f4; }
+        .setup-header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #57534e; padding-bottom: 10px; }
+        .setup-header h1 { font-size: 22pt; color: #fdba74; }
+
+        .info-box { background: #57534e; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 11pt; line-height: 1.5; }
+        .info-box strong { color: #fed7aa; }
+
+        .section-title { font-size: 14pt; font-weight: bold; color: #fca5a5; margin: 15px 0 10px; }
+
+        .setting-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; background: #57534e; padding: 12px 18px; border-radius: 10px; }
+        .setting-row label { font-weight: bold; font-size: 12pt; }
+        .setting-row select, .setting-row input { padding: 8px 12px; font-size: 12pt; border-radius: 8px; border: none; background: #292524; color: white; }
+
+        .btn { padding: 15px 25px; font-size: 16pt; font-weight: bold; color: white; border: none; border-radius: 12px; cursor: pointer; transition: background 0.2s; text-align: center; width: 100%; }
+        .btn-primary { background: linear-gradient(135deg, #b91c1c, #1d4ed8); }
+        .btn-primary:hover { opacity: 0.9; }
+
+        /* カメラワイプ */
+        .camera-container { position: absolute; top: 15px; right: 15px; width: 130px; height: 95px; border-radius: 12px; overflow: hidden; border: 3px solid #fdba74; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100; background: #000; }
+        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+        /* 描画画面レイアウト */
+        .art-header { display: flex; gap: 20px; justify-content: center; align-items: center; margin-bottom: 10px; padding-right: 140px; }
+        
+        .color-card { flex: 1; max-width: 300px; height: 70px; border-radius: 15px; border: 4px solid #57534e; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; font-size: 16pt; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; background: #44403c; }
+        .color-card.active { border-color: #fde047; transform: scale(1.05); box-shadow: 0 0 20px rgba(253, 224, 71, 0.6); }
+        .color-preview { width: 35px; height: 35px; border-radius: 50%; border: 2px solid #fff; }
+        .color-gauge { position: absolute; bottom: 0; left: 0; height: 8px; background-color: #fde047; width: 0%; transition: width 0.05s linear; }
+
+        .canvas-container { flex: 1; position: relative; border-radius: 10px; overflow: hidden; border: 4px solid #57534e; background-color: #f8f5e6; }
+        #art-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+        #pattern-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+        .action-bar { display: flex; gap: 10px; position: absolute; bottom: 25px; left: 25px; z-index: 100; }
+        .action-btn { padding: 10px 18px; font-size: 11pt; background-color: rgba(68, 64, 60, 0.9); color: white; border: 1px solid #78716c; font-weight: bold; border-radius: 10px; cursor: pointer; backdrop-filter: blur(5px); }
+        .action-btn:hover { background-color: #b91c1c; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 設定画面 -->
+    <div id="setup-screen" class="screen active">
+        <div class="setup-container">
+            <div class="setup-header">
+                <h1>👘 アイヌ紋様 視線塗り絵</h1>
+                <p style="color: #d6d3d1; margin-top: 5px;">目線で布に色を染めよう</p>
+            </div>
+
+            <div class="info-box">
+                <strong>【学習のポイント】</strong><br>
+                アイヌの着物（アットゥシなど）には、魔除けの意味を込めて独特の紋様が刺繍されました。<br>
+                ・<strong>モレウ</strong>（渦巻き）：力が湧き出す、魔が目を回す<br>
+                ・<strong>アイウシ</strong>（トゲ）：魔を刺して遠ざける
+            </div>
+
+            <div class="section-title">1. 染める色（2色）を選択</div>
+            <div class="setting-row">
+                <label for="color-left">👈 ひだりの色</label>
+                <input type="color" id="color-left" value="#b91c1c">
+            </div>
+            <div class="setting-row">
+                <label for="color-right">👉 みぎの色</label>
+                <input type="color" id="color-right" value="#1e3a8a">
+            </div>
+
+            <div class="section-title">2. 感度・可動域の調整（感度不足を解消）</div>
+            
+            <div class="setting-row" style="border: 2px solid #fdba74;">
+                <label for="gaze-sensitivity">🚀 感度（動きの大きさ）</label>
+                <select id="gaze-sensitivity">
+                    <option value="3.0">標準（少し動く）</option>
+                    <option value="5.0" selected>高感度（よく動く・おすすめ）</option>
+                    <option value="8.0">爆発感度（少しの目線で端まで届く）</option>
+                    <option value="12.0">限界突破（わずかな動きで画面全域）</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label for="head-assist">👤 顔の向きアシスト</label>
+                <select id="head-assist">
+                    <option value="0.5" selected>ON（目線＋顔の向きで塗る・おすすめ）</option>
+                    <option value="0.0">OFF（目線のみ）</option>
+                    <option value="1.0">強力（顔の傾きを大きく反映）</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label for="brush-size">筆の太さ（塗りやすさ）</label>
+                <select id="brush-size">
+                    <option value="50">細め</option>
+                    <option value="90" selected>標準（おすすめ）</option>
+                    <option value="150">超太め（すぐ全体が塗れる）</option>
+                </select>
+            </div>
+
+            <button id="start-btn" class="btn btn-primary" style="margin-top: 15px;">カメラを起動してスタート！</button>
+            <p id="loading-msg" style="text-align: center; color: #fdba74; font-weight: bold; margin-top: 10px; display: none;">AIモデルを準備中...</p>
+        </div>
+    </div>
+
+    <!-- 2. 描画画面 -->
+    <div id="presentation-screen" class="screen">
+        <div class="camera-container">
+            <video id="webcam" autoplay playsinline muted></video>
+        </div>
+
+        <div class="art-header">
+            <div class="color-card active" id="color-card-0">
+                <div class="color-preview" id="preview-0"></div>
+                <span>👈 ひだり</span>
+                <div class="color-gauge" id="gauge-0"></div>
+            </div>
+
+            <div class="color-card" id="color-card-1">
+                <div class="color-preview" id="preview-1"></div>
+                <span>👉 みぎ</span>
+                <div class="color-gauge" id="gauge-1"></div>
+            </div>
+        </div>
+
+        <div class="canvas-container" id="canvas-wrapper">
+            <canvas id="art-canvas"></canvas>
+            
+            <svg id="pattern-svg" viewBox="0 0 500 500" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                    <g id="motif">
+                        <path d="M 0,0 C 120,0 140,100 70,120 C 20,135 -20,80 10,40 C 35,10 70,20 60,60 C 55,80 35,70 30,50" fill="none" stroke="#1c1917" stroke-width="12" stroke-linecap="round"/>
+                        <path d="M 135,90 L 170,70 M 135,90 L 160,125" fill="none" stroke="#1c1917" stroke-width="12" stroke-linecap="round"/>
+                        <path d="M 70,120 L 60,160 M 70,120 L 100,150" fill="none" stroke="#1c1917" stroke-width="12" stroke-linecap="round"/>
+                    </g>
+                </defs>
+                
+                <g transform="translate(250, 250)">
+                    <use href="#motif" transform="scale(1, 1)" />
+                    <use href="#motif" transform="scale(-1, 1)" />
+                    <use href="#motif" transform="scale(1, -1)" />
+                    <use href="#motif" transform="scale(-1, -1)" />
+                    <polygon points="0,-60 60,0 0,60 -60,0" fill="none" stroke="#1c1917" stroke-width="14" stroke-linejoin="round"/>
+                </g>
+
+                <rect x="25" y="25" width="450" height="450" rx="20" fill="none" stroke="#1c1917" stroke-width="16"/>
+                <rect x="70" y="70" width="360" height="360" rx="10" fill="none" stroke="#1c1917" stroke-width="8"/>
+                
+                <path d="M 70,160 L 35,140 M 70,160 L 35,180" fill="none" stroke="#1c1917" stroke-width="8" stroke-linecap="round"/>
+                <path d="M 70,340 L 35,320 M 70,340 L 35,360" fill="none" stroke="#1c1917" stroke-width="8" stroke-linecap="round"/>
+                <path d="M 430,160 L 465,140 M 430,160 L 465,180" fill="none" stroke="#1c1917" stroke-width="8" stroke-linecap="round"/>
+                <path d="M 430,340 L 465,320 M 430,340 L 465,360" fill="none" stroke="#1c1917" stroke-width="8" stroke-linecap="round"/>
+            </svg>
+        </div>
+
+        <div class="action-bar">
+            <button id="clear-btn" class="action-btn">🗑️ 最初からやり直す</button>
+            <button id="save-btn" class="action-btn">💾 作品を保存する</button>
+            <button id="back-to-setup" class="action-btn">⚙️ 設定へ戻る</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+        let faceLandmarker = null;
+        let lastVideoTime = -1;
+        let isCameraInit = false;
+
+        let colors = ["#b91c1c", "#1e3a8a"];
+        let currentColorIndex = 0;
+        let brushSize = 90;
+        let sensitivityMultiplier = 5.0;
+        let headAssistWeight = 0.5;
+
+        let currentTargetColor = -1;
+        let dwellStartTime = null;
+        const dwellTimeMs = 350;
+
+        let currentX = 0;
+        let currentY = 0;
+        let baseNoseX = null;
+        let baseNoseY = null;
+
+        const ui = {
+            colorLeft: document.getElementById('color-left'),
+            colorRight: document.getElementById('color-right'),
+            brushSizeSelect: document.getElementById('brush-size'),
+            sensitivitySelect: document.getElementById('gaze-sensitivity'),
+            headAssistSelect: document.getElementById('head-assist'),
+            startBtn: document.getElementById('start-btn'),
+            loadingMsg: document.getElementById('loading-msg'),
+            setupScreen: document.getElementById('setup-screen'),
+            presentationScreen: document.getElementById('presentation-screen'),
+            backToSetupBtn: document.getElementById('back-to-setup'),
+            clearBtn: document.getElementById('clear-btn'),
+            saveBtn: document.getElementById('save-btn'),
+            video: document.getElementById('webcam'),
+            canvas: document.getElementById('art-canvas'),
+            canvasWrapper: document.getElementById('canvas-wrapper')
+        };
+
+        const ctx = ui.canvas.getContext('2d');
+
+        function resizeCanvas() {
+            ui.canvas.width = ui.canvasWrapper.clientWidth;
+            ui.canvas.height = ui.canvasWrapper.clientHeight;
+            currentX = ui.canvas.width / 2;
+            currentY = ui.canvas.height / 2;
+            clearCanvas();
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = "#f8f5e6";
+            ctx.fillRect(0, 0, ui.canvas.width, ui.canvas.height);
+        }
+
+        ui.startBtn.addEventListener('click', async () => {
+            colors[0] = ui.colorLeft.value;
+            colors[1] = ui.colorRight.value;
+            brushSize = parseInt(ui.brushSizeSelect.value);
+            sensitivityMultiplier = parseFloat(ui.sensitivitySelect.value);
+            headAssistWeight = parseFloat(ui.headAssistSelect.value);
+
+            document.getElementById('preview-0').style.backgroundColor = colors[0];
+            document.getElementById('preview-1').style.backgroundColor = colors[1];
+
+            ui.startBtn.disabled = true;
+            ui.loadingMsg.style.display = 'block';
+
+            if (!isCameraInit) {
+                await initAI();
+            } else {
+                startPresentation();
+            }
+        });
+
+        async function initAI() {
+            try {
+                const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+                
+                faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                    baseOptions: { 
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`, 
+                        delegate: "CPU" 
+                    },
+                    outputFaceBlendshapes: true, runningMode: "VIDEO", numFaces: 1
+                });
+
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                ui.video.srcObject = stream;
+                await ui.video.play();
+
+                isCameraInit = true;
+                startPresentation();
+                predictWebcam();
+            } catch (err) {
+                alert("カメラの読み込みに失敗しました。");
+                ui.startBtn.disabled = false;
+                ui.loadingMsg.style.display = 'none';
+            }
+        }
+
+        function startPresentation() {
+            ui.setupScreen.classList.remove('active');
+            ui.presentationScreen.classList.add('active');
+            ui.startBtn.disabled = false;
+            ui.loadingMsg.style.display = 'none';
+            baseNoseX = null;
+            baseNoseY = null;
+            setTimeout(resizeCanvas, 100);
+        }
+
+        function predictWebcam() {
+            if (faceLandmarker && ui.presentationScreen.classList.contains('active')) {
+                let startTimeMs = performance.now();
+                
+                if (ui.video.readyState >= 2 && lastVideoTime !== ui.video.currentTime) {
+                    lastVideoTime = ui.video.currentTime;
+                    const results = faceLandmarker.detectForVideo(ui.video, startTimeMs);
+
+                    if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
+                        const shapes = results.faceBlendshapes[0].categories;
+                        
+                        // 1. 目線ベクトルの取得
+                        const lookLeft = (shapes.find(s => s.categoryName === "eyeLookOutLeft")?.score || 0) + (shapes.find(s => s.categoryName === "eyeLookInRight")?.score || 0);
+                        const lookRight = (shapes.find(s => s.categoryName === "eyeLookInLeft")?.score || 0) + (shapes.find(s => s.categoryName === "eyeLookOutRight")?.score || 0);
+                        const lookUp = (shapes.find(s => s.categoryName === "eyeLookUpLeft")?.score || 0) + (shapes.find(s => s.categoryName === "eyeLookUpRight")?.score || 0);
+                        const lookDown = (shapes.find(s => s.categoryName === "eyeLookDownLeft")?.score || 0) + (shapes.find(s => s.categoryName === "eyeLookDownRight")?.score || 0);
+
+                        let gazeDX = (lookRight - lookLeft);
+                        let gazeDY = (lookDown - lookUp);
+
+                        // 2. 顔の向き（頭の移動）のアシスト計算
+                        let headDX = 0;
+                        let headDY = 0;
+                        if (results.faceLandmarks && results.faceLandmarks[0]) {
+                            const nose = results.faceLandmarks[0][1]; // 鼻頭ランドマーク
+                            if (baseNoseX === null) {
+                                baseNoseX = nose.x;
+                                baseNoseY = nose.y;
+                            }
+                            // カメラが反転しているためXの符号を調整
+                            headDX = (baseNoseX - nose.x) * 4.0; 
+                            headDY = (nose.y - baseNoseY) * 4.0;
+                        }
+
+                        // 3. 目線と顔向きを合成
+                        let totalDX = gazeDX + (headDX * headAssistWeight);
+                        let totalDY = gazeDY + (headDY * headAssistWeight);
+
+                        // 4. 強力なブースト倍率の適用
+                        const targetX = ui.canvas.width / 2 + (totalDX * ui.canvas.width * 0.8 * sensitivityMultiplier);
+                        const targetY = ui.canvas.height / 2 + (totalDY * ui.canvas.height * 0.8 * sensitivityMultiplier);
+
+                        // スムーズな補間（素早い追従のため 0.25 に引き上げ）
+                        currentX += (targetX - currentX) * 0.25;
+                        currentY += (targetY - currentY) * 0.25;
+
+                        // 画面外に飛び出さないように制御
+                        currentX = Math.max(0, Math.min(ui.canvas.width, currentX));
+                        currentY = Math.max(0, Math.min(ui.canvas.height, currentY));
+
+                        // 画面最上部（色選択カード領域）の注視チェック
+                        if (targetY < 90) {
+                            const colorZone = targetX < ui.canvas.width / 2 ? 0 : 1;
+                            updateColorDwell(colorZone);
+                        } else {
+                            updateColorDwell(-1);
+                            drawOnCanvas(currentX, currentY);
+                        }
+                    }
+                }
+            }
+            requestAnimationFrame(predictWebcam);
+        }
+
+        function drawOnCanvas(x, y) {
+            ctx.beginPath();
+            ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+            ctx.fillStyle = colors[currentColorIndex];
+            ctx.globalAlpha = 0.55;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+
+        function updateColorDwell(targetIndex) {
+            if (targetIndex !== currentTargetColor) {
+                resetGauges();
+                currentTargetColor = targetIndex;
+                dwellStartTime = targetIndex !== -1 ? performance.now() : null;
+            } else if (targetIndex !== -1 && dwellStartTime) {
+                const elapsed = performance.now() - dwellStartTime;
+                const progress = Math.min(100, (elapsed / dwellTimeMs) * 100);
+
+                const gauge = document.getElementById(`gauge-${targetIndex}`);
+                if (gauge) gauge.style.width = `${progress}%`;
+
+                if (elapsed >= dwellTimeMs) {
+                    switchColor(targetIndex);
+                }
+            }
+        }
+
+        function resetGauges() {
+            document.querySelectorAll('.color-gauge').forEach(g => g.style.width = '0%');
+        }
+
+        function switchColor(index) {
+            currentColorIndex = index;
+            document.querySelectorAll('.color-card').forEach((c, i) => {
+                if (i === index) c.classList.add('active');
+                else c.classList.remove('active');
+            });
+            resetGauges();
+            dwellStartTime = null;
+            currentTargetColor = -1;
+        }
+
+        ui.clearBtn.addEventListener('click', clearCanvas);
+
+        ui.saveBtn.addEventListener('click', () => {
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = ui.canvas.width;
+            exportCanvas.height = ui.canvas.height;
+            const exCtx = exportCanvas.getContext('2d');
+            
+            exCtx.drawImage(ui.canvas, 0, 0);
+
+            const svgElement = document.getElementById('pattern-svg');
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const svgString = svgData.replace('<svg', `<svg width="${ui.canvas.width}" height="${ui.canvas.height}"`);
+            const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            
+            const img = new Image();
+            img.onload = () => {
+                exCtx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                
+                const link = document.createElement('a');
+                link.download = `ainu-monyou-${new Date().toISOString().slice(0,10)}.png`;
+                link.href = exportCanvas.toDataURL('image/png');
+                link.click();
+            };
+            img.src = url;
+        });
+
+        ui.backToSetupBtn.addEventListener('click', () => {
+            ui.presentationScreen.classList.remove('active');
+            ui.setupScreen.classList.active;
+            ui.setupScreen.classList.add('active');
+        });
+
+        window.addEventListener('resize', () => {
+            if (ui.presentationScreen.classList.contains('active')) {
+                resizeCanvas();
+            }
+        });
+    </script>
+</body>
+</html>
